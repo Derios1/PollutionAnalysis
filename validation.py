@@ -1,20 +1,48 @@
+import abc
+import numpy as np
 from sklearn.model_selection import TimeSeriesSplit
 from itertools import product
-import numpy as np
 from sklearn.base import clone
 
-class TimeSeriesWindowCV:
-    
-    def __init__(self, estimator, train_size, test_size, param_grid=None):
-        self.estimator_cls = estimator
-        self.train_size = train_size
-        self.test_size = test_size
-        self.param_grid = param_grid
-        
+
+class TimeSeriesCV(abc.ABC):
+    def __init__(self):
         self.estimator = None
         self.errors = []
         self.best_estimators = [None]*3
         self.best_errors = [np.inf]*3
+        
+    @abc.abstractmethod
+    def fit(self, X, Y):
+        pass
+    
+    def create_param_grid(self, param_grid):
+        if self.param_grid:
+            return list(map(lambda x: dict(zip(self.param_grid.keys(), x)), list(product(*self.param_grid.values()))))
+        else:
+            return [None]
+    
+    def update_estimators(self):
+        mean = self.mean_error()
+        for i in range(3): 
+            if mean[i] < self.best_errors[i]:
+                self.best_errors[i] = mean[i]
+                self.best_estimators[i] = clone(self.estimator)
+    
+    def mean_error(self):
+        return np.mean(self.errors, axis=0)
+    
+    
+        
+class TimeSeriesWindowCV(TimeSeriesCV):
+    
+    def __init__(self, estimator, train_size, test_size, param_grid=None):
+        super().__init__()
+        
+        self.estimator_cls = estimator
+        self.train_size = train_size
+        self.test_size = test_size
+        self.param_grid = param_grid
     
     def fit(self, X, Y):
         self.errors.clear()
@@ -23,10 +51,7 @@ class TimeSeriesWindowCV:
         
         start = 0
         
-        if self.param_grid:
-            param_grid = list(map(lambda x: dict(zip(self.param_grid.keys(), x)), list(product(*self.param_grid.values()))))
-        else:
-            param_grid = [None]
+        param_grid = self.create_param_grid(self.param_grid)
         
         for params in param_grid:
             while start + window_size <= len(X):
@@ -48,40 +73,27 @@ class TimeSeriesWindowCV:
 
                 start += self.test_size
                 
-            mean = self.mean_error()
-            for i in range(3): 
-                if mean[i] < self.best_errors[i]:
-                    self.best_errors[i] = mean[i]
-                    self.best_estimators[i] = clone(self.estimator)
-            
+            self.update_estimators()    
             self.errors.clear()
+            
             start = 0
-             
-    def mean_error(self):
-        return np.mean(self.errors, axis=0)
 
-class TimeSeriesWalkingForwardCV:
+class TimeSeriesWalkingForwardCV(TimeSeriesCV):
     def __init__(self, estimator, test_size, n_splits, gap=0, param_grid=None):
+        super().__init__()
+        
         self.estimator_cls = estimator
         self.test_size = test_size
         self.n_splits = n_splits
         self.gap = gap
         self.param_grid = param_grid
-        
-        self.estimator = None
-        self.errors = []
-        self.best_estimators = [None]*3
-        self.best_errors = [np.inf]*3
     
     def fit(self, X, Y):
         self.errors.clear()
         
         ts_split = TimeSeriesSplit(test_size=self.test_size, n_splits=self.n_splits, gap=self.gap)
         
-        if self.param_grid:
-            param_grid = list(map(lambda x: dict(zip(self.param_grid.keys(), x)), list(product(*self.param_grid.values()))))
-        else:
-            param_grid = [None]
+        param_grid = self.create_param_grid(self.param_grid)
             
         for params in param_grid:    
             for train_index, test_index in ts_split.split(X):
@@ -98,14 +110,7 @@ class TimeSeriesWalkingForwardCV:
 
                 self.errors.append(((Y_pred - Y_test)**2).mean(axis=0))
                
-            mean = self.mean_error()
-            for i in range(3): 
-                if mean[i] < self.best_errors[i]:
-                    self.best_errors[i] = mean[i]
-                    self.best_estimators[i] = clone(self.estimator)
-            
+            self.update_estimators()
             self.errors.clear()
     
-    def mean_error(self):
-        return np.mean(self.errors, axis=0)
     
