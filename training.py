@@ -8,7 +8,11 @@ def train_models(estimator, X_train, Y_train, horizons_n: int, params: dict):
         X_train = X_train[:-1]
         Y_train = Y_train.shift(-1).dropna()
         
-        model = MultiOutputRegressor(estimator(**params))
+        if Y_train.shape[1] > 1:
+            model = MultiOutputRegressor(estimator(**params))
+        else:
+            model = estimator(**params)
+        
         model.fit(X_train, Y_train)
         
         models.append(model)
@@ -24,7 +28,11 @@ def train_and_predict(estimator, X_train, Y_train, horizons_n, params):
     for i in range(horizons_n):
         Y_train = Y_train.shift(-1).dropna()
         
-        model = MultiOutputRegressor(estimator(**params))
+        if Y_train.shape[1] > 1:
+            model = MultiOutputRegressor(estimator(**params))
+        else:
+            model = estimator(**params)
+            
         model.fit(X_train, Y_train)
         
         result[i] = model.predict(np.array([X_train[-1]]))
@@ -35,8 +43,8 @@ def train_and_predict(estimator, X_train, Y_train, horizons_n, params):
     return result
 
 
-def predict(models, X_point):
-    result = np.zeros(shape=(len(models), 3))
+def predict(models, X_point, output_n=3):
+    result = np.zeros(shape=(len(models), output_n))
     
     for i, m in enumerate(models):
         result[i] = m.predict(np.array([X_point]))
